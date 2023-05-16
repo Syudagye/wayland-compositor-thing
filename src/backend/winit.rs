@@ -16,7 +16,6 @@ use smithay::{
     },
     utils::{Rectangle, Transform},
 };
-use tracing::trace;
 
 use crate::{state::ThingState, CalloopData};
 

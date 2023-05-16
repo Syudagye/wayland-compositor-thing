@@ -8,7 +8,7 @@ use smithay::{
         calloop::{generic::Generic, EventLoop, Interest, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
-            Display, ListeningSocket, protocol::wl_surface::WlSurface,
+            Display, protocol::wl_surface::WlSurface,
         },
     },
     wayland::{compositor::{CompositorClientState, CompositorState}, socket::ListeningSocketSource, shm::ShmState, shell::xdg::XdgShellState, output::OutputManagerState, data_device::{DataDeviceState, DataDeviceHandler, ClientDndGrabHandler, ServerDndGrabHandler}}, delegate_seat, delegate_data_device,

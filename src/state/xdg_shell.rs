@@ -1,7 +1,7 @@
 use smithay::{
     delegate_xdg_shell,
     desktop::{Space, Window},
-    reexports::{wayland_server::{protocol::{wl_seat::WlSeat, wl_surface::WlSurface}, Resource}, wayland_protocols::xdg::shell::server::xdg_toplevel::{ResizeEdge, self}},
+    reexports::wayland_server::protocol::{wl_seat::WlSeat, wl_surface::WlSurface},
     utils::Serial,
     wayland::{
         compositor::with_states,
@@ -9,7 +9,7 @@ use smithay::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             XdgToplevelSurfaceData,
         },
-    }, input::{Seat, keyboard::GrabStartData},
+    },
 };
 
 use super::ThingState;

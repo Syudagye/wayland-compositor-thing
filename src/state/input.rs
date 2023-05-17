@@ -1,6 +1,6 @@
 use smithay::{
     backend::input::{
-        ButtonState, Event, InputBackend, InputEvent, KeyboardKeyEvent,
+        AbsolutePositionEvent, ButtonState, Event, InputBackend, InputEvent, KeyboardKeyEvent,
         PointerButtonEvent,
     },
     desktop::WindowSurfaceType,
@@ -33,18 +33,22 @@ impl ThingState {
             //TODO: Handle pointer events
             InputEvent::PointerMotion { event } => debug!("PointerMotion"),
             InputEvent::PointerMotionAbsolute { event } => {
+                let output = self.space.outputs().next().unwrap();
+                let output_geo = self.space.output_geometry(output).unwrap();
+                let location =
+                    event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
+
+                let under = self
+                    .space
+                    .element_under(location)
+                    .map(|(window, pos)| {
+                        window
+                            .surface_under(location - pos.to_f64(), WindowSurfaceType::ALL)
+                            .map(|(s, l)| (s, pos + l))
+                    })
+                    .flatten();
+
                 let pointer = self.seat.get_pointer().unwrap();
-                let location = pointer.current_location();
-
-                let under =
-                    self.space
-                        .element_under(pointer.current_location())
-                        .map(|(window, pos)| {
-                            window
-                                .surface_under(location - pos.to_f64(), WindowSurfaceType::ALL)
-                                .unwrap()
-                        });
-
                 pointer.motion(
                     self,
                     under,
@@ -61,7 +65,7 @@ impl ThingState {
                 let state = event.state();
                 let serial = SERIAL_COUNTER.next_serial();
 
-                if let ButtonState::Pressed = state {
+                if state == ButtonState::Pressed && !pointer.is_grabbed() {
                     let keyboard = self.seat.get_keyboard().unwrap();
 
                     if let Some(window) = self

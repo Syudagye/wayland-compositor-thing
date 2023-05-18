@@ -23,7 +23,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        focus: Option<(
+        _focus: Option<(
             <ThingState as SeatHandler>::PointerFocus,
             Point<i32, Logical>,
         )>,
@@ -41,7 +41,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        focus: Option<(
+        _focus: Option<(
             <ThingState as SeatHandler>::PointerFocus,
             Point<i32, Logical>,
         )>,

@@ -2,16 +2,17 @@ use smithay::{
     delegate_xdg_shell,
     desktop::{Space, Window},
     input::{
-        pointer::{
-            Focus, GrabStartData,
-        },
+        pointer::{Focus, GrabStartData},
         Seat,
     },
-    reexports::wayland_server::{
-        protocol::{wl_seat::WlSeat, wl_surface::WlSurface},
-        Resource,
+    reexports::{
+        wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+        wayland_server::{
+            protocol::{wl_seat::WlSeat, wl_surface::WlSurface},
+            Resource,
+        },
     },
-    utils::{Serial},
+    utils::{Rectangle, Serial},
     wayland::{
         compositor::with_states,
         shell::xdg::{
@@ -21,11 +22,12 @@ use smithay::{
     },
 };
 
-use self::grabs::MovePointerGrab;
+use self::{move_grab::MovePointerGrab, resize_grab::ResizePointerGrab};
 
 use super::ThingState;
 
-pub mod grabs;
+pub mod move_grab;
+pub mod resize_grab;
 
 impl XdgShellHandler for ThingState {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -68,6 +70,39 @@ impl XdgShellHandler for ThingState {
             initial_window_location,
         };
 
+        pointer.set_grab(self, grab, serial, Focus::Clear);
+    }
+
+    fn resize_request(
+        &mut self,
+        surface: ToplevelSurface,
+        seat: WlSeat,
+        serial: Serial,
+        edges: ResizeEdge,
+    ) {
+        let seat: Seat<ThingState> = Seat::from_resource(&seat).unwrap();
+
+        let Some(start_data) = check_grab(&seat, surface.wl_surface(), serial) else {
+            return;
+        };
+
+        let pointer = seat.get_pointer().unwrap();
+
+        let window = self
+            .space
+            .elements()
+            .find(|window| window.toplevel().wl_surface() == surface.wl_surface())
+            .unwrap()
+            .clone();
+        let initial_location = self.space.element_location(&window).unwrap();
+        let initial_size = window.geometry().size;
+
+        let grab = ResizePointerGrab::start(
+            start_data,
+            window,
+            Rectangle::from_loc_and_size(initial_location, initial_size),
+            edges,
+        );
         pointer.set_grab(self, grab, serial, Focus::Clear);
     }
 

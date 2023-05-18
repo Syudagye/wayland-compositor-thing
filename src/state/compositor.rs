@@ -1,6 +1,6 @@
 use smithay::{wayland::{compositor::{CompositorHandler, CompositorState, CompositorClientState, is_sync_subsurface, get_parent}, buffer::BufferHandler, shm::{ShmHandler, ShmState}}, reexports::wayland_server::{Client, protocol::{wl_surface::WlSurface, wl_buffer::WlBuffer}}, backend::renderer::utils::on_commit_buffer_handler, delegate_compositor, delegate_shm};
 
-use super::{ThingState, ClientState, xdg_shell};
+use super::{ThingState, ClientState, xdg_shell::{self, resize_grab}};
 
 // COMPOSITOR
 
@@ -27,6 +27,7 @@ impl CompositorHandler for ThingState {
         };
 
         xdg_shell::handle_commit(&self.space, surface);
+        resize_grab::handle_commit(&mut self.space, surface);
     }
 }
 

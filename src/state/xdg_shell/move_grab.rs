@@ -3,18 +3,20 @@ use smithay::{
     input::{
         pointer::{
             AxisFrame, ButtonEvent, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
-            RelativeMotionEvent,
+            RelativeMotionEvent, Focus,
         },
-        SeatHandler,
+        SeatHandler, Seat,
     },
-    utils::{Logical, Point},
+    utils::{Logical, Point, Serial},
 };
 
-use crate::state::ThingState;
+use crate::state::{elements::WindowElement, ThingState};
+
+use super::check_grab;
 
 pub struct MovePointerGrab {
     pub start_data: GrabStartData<ThingState>,
-    pub window: Window,
+    pub window: WindowElement,
     pub initial_window_location: Point<i32, Logical>,
 }
 
@@ -80,4 +82,37 @@ impl PointerGrab<ThingState> for MovePointerGrab {
     fn start_data(&self) -> &GrabStartData<ThingState> {
         &self.start_data
     }
+}
+
+pub fn handle_move_request(
+    state: &mut ThingState,
+    window: WindowElement,
+    seat: Seat<ThingState>,
+    serial: Serial,
+) {
+    let surface = match window.clone() {
+        WindowElement::Wayland(w) => w.toplevel().wl_surface().clone(),
+        WindowElement::X11(w) => {
+            if let Some(surface) = w.wl_surface() {
+                surface
+            } else {
+                return;
+            }
+        }
+    };
+    let Some(start_data) = check_grab(&seat, &surface, serial) else {
+        return;
+    };
+
+    let pointer = seat.get_pointer().unwrap();
+
+    let initial_window_location = state.space.element_location(&window).unwrap();
+
+    let grab = MovePointerGrab {
+        start_data,
+        window,
+        initial_window_location,
+    };
+
+    pointer.set_grab(state, grab, serial, Focus::Clear);
 }

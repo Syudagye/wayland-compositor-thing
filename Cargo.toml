@@ -9,6 +9,7 @@ edition = "2021"
 smithay-egui = { path = "../smithay-egui"}
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+bitflags = "2.3.1"
 
 [dependencies.smithay]
 git = "https://github.com/Smithay/smithay"
@@ -17,4 +18,5 @@ features = [
     "backend_winit",
     "wayland_frontend",
     "desktop",
+    "xwayland",
 ]

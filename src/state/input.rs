@@ -5,14 +5,15 @@ use smithay::{
     },
     desktop::WindowSurfaceType,
     input::{
-        keyboard::FilterResult,
+        keyboard::{xkb, FilterResult, ModifiersState},
         pointer::{ButtonEvent, MotionEvent},
     },
     utils::SERIAL_COUNTER,
+    wayland::{seat::WaylandFocus, shell::xdg::XdgShellHandler},
 };
 use tracing::debug;
 
-use super::ThingState;
+use super::{elements::WindowElement, ThingState};
 
 impl ThingState {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
@@ -38,15 +39,7 @@ impl ThingState {
                 let location =
                     event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
 
-                let under = self
-                    .space
-                    .element_under(location)
-                    .map(|(window, pos)| {
-                        window
-                            .surface_under(location - pos.to_f64(), WindowSurfaceType::ALL)
-                            .map(|(s, l)| (s, pos + l))
-                    })
-                    .flatten();
+                let under = self.surface_under(location);
 
                 let pointer = self.seat.get_pointer().unwrap();
                 pointer.motion(
@@ -73,19 +66,29 @@ impl ThingState {
                         .element_under(pointer.current_location())
                         .map(|(w, _)| w.clone())
                     {
+                        let surface = match window.clone() {
+                            WindowElement::Wayland(w) => w.toplevel().wl_surface().clone(),
+                            // idk either here
+                            WindowElement::X11(w) => w.wl_surface().unwrap().clone(),
+                        };
+
                         self.space.raise_element(&window, true);
-                        keyboard.set_focus(
-                            self,
-                            Some(window.toplevel().wl_surface().to_owned()),
-                            serial,
-                        );
-                        self.space.elements().for_each(|window| {
-                            window.toplevel().send_pending_configure();
+                        keyboard.set_focus(self, Some(surface), serial);
+                        self.space.elements().for_each(|window| match window {
+                            WindowElement::Wayland(w) => {
+                                w.toplevel().send_pending_configure();
+                            }
+                            WindowElement::X11(_) => (),
                         });
                     } else {
-                        self.space.elements().for_each(|window| {
-                            window.set_activated(false);
-                            window.toplevel().send_pending_configure();
+                        self.space.elements().for_each(|window| match window {
+                            WindowElement::Wayland(w) => {
+                                w.set_activated(false);
+                                w.toplevel().send_pending_configure();
+                            },
+                            WindowElement::X11(w) => {
+                                w.set_activated(false).unwrap();
+                            }
                         });
                         keyboard.set_focus(self, None, serial);
                     }

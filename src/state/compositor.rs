@@ -1,6 +1,27 @@
-use smithay::{wayland::{compositor::{CompositorHandler, CompositorState, CompositorClientState, is_sync_subsurface, get_parent}, buffer::BufferHandler, shm::{ShmHandler, ShmState}}, reexports::wayland_server::{Client, protocol::{wl_surface::WlSurface, wl_buffer::WlBuffer}}, backend::renderer::utils::on_commit_buffer_handler, delegate_compositor, delegate_shm};
+use smithay::{
+    backend::renderer::utils::on_commit_buffer_handler,
+    delegate_compositor, delegate_shm,
+    reexports::wayland_server::{
+        protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
+        Client, backend::ClientData,
+    },
+    wayland::{
+        buffer::BufferHandler,
+        compositor::{
+            get_parent, is_sync_subsurface, CompositorClientState, CompositorHandler,
+            CompositorState,
+        },
+        shm::{ShmHandler, ShmState},
+    }, xwayland::{X11Wm, XWaylandClientData},
+};
 
-use super::{ThingState, ClientState, xdg_shell::{self, resize_grab}};
+use crate::CalloopData;
+
+use super::{
+    elements::WindowElement,
+    xdg_shell::{self, resize_grab},
+    ClientState, ThingState,
+};
 
 // COMPOSITOR
 
@@ -10,7 +31,13 @@ impl CompositorHandler for ThingState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        &client.get_data::<ClientState>().unwrap().compositor_state
+        if let Some(client_data) = client.get_data::<XWaylandClientData>() {
+            return &client_data.compositor_state;
+        }
+        if let Some(client_data) = client.get_data::<ClientState>() {
+            return &client_data.compositor_state;
+        }
+        panic!("Can't get the client's compositor state");
     }
 
     fn commit(&mut self, surface: &WlSurface) {
@@ -21,10 +48,24 @@ impl CompositorHandler for ThingState {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(window) = self.space.elements().find(|w| w.toplevel().wl_surface() == &root) {
+            if let Some(window) = self
+                .space
+                .elements()
+                .filter_map(|w| {
+                    if let WindowElement::Wayland(w) = w {
+                        Some(w)
+                    } else {
+                        None
+                    }
+                })
+                .find(|w| w.toplevel().wl_surface() == &root)
+            {
                 window.on_commit();
             }
         };
+
+        // Idk where to put this tho
+        X11Wm::commit_hook::<CalloopData>(surface);
 
         xdg_shell::handle_commit(&self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);

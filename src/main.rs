@@ -23,7 +23,7 @@ fn main() {
     let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new().expect("unable to initialize event loop");
     let mut display: Display<ThingState> = Display::new().expect("unable to initialize display");
 
-    let state = ThingState::new(&mut event_loop, &mut display);
+    let state = ThingState::new(event_loop.handle(), &mut display);
 
     let mut data = CalloopData { state, display };
 

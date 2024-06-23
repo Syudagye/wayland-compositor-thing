@@ -14,11 +14,12 @@ use smithay::{
         wayland_server::protocol::wl_surface::WlSurface,
     },
     utils::{Logical, Point, Rectangle, Serial, Size},
-    wayland::{compositor, shell::xdg::SurfaceCachedState},
+    wayland::{compositor, seat::WaylandFocus, shell::xdg::SurfaceCachedState},
     xwayland::xwm,
 };
+use tracing::error;
 
-use crate::state::{elements::WindowElement, ThingState};
+use crate::state::ThingState;
 
 use super::check_grab;
 
@@ -55,7 +56,7 @@ impl From<xwm::ResizeEdge> for ResizeEdge {
 
 pub struct ResizePointerGrab {
     pub start_data: GrabStartData<ThingState>,
-    pub window: WindowElement,
+    pub window: Window,
     pub initial_rect: Rectangle<i32, Logical>,
 
     pub edges: ResizeEdge,
@@ -66,23 +67,20 @@ pub struct ResizePointerGrab {
 impl ResizePointerGrab {
     pub fn start(
         start_data: GrabStartData<ThingState>,
-        window: WindowElement,
+        window: Window,
         initial_rect: Rectangle<i32, Logical>,
         edges: ResizeEdge,
     ) -> Self {
         let last_window_size = initial_rect.size;
 
-        let surface = match window.clone() {
-            WindowElement::Wayland(w) => w.toplevel().wl_surface().clone(),
-            WindowElement::X11(w) => w.wl_surface().unwrap(),
-        };
+        let surface = window.wl_surface().map(|s| s.into_owned());
 
-        ResizeSurfaceState::with(&surface, |state| {
-            *state = ResizeSurfaceState::Resizing {
-                edges,
-                initial_rect,
-            };
-        });
+        // ResizeSurfaceState::with(&surface, |state| {
+        //     *state = ResizeSurfaceState::Resizing {
+        //         edges,
+        //         initial_rect,
+        //     };
+        // });
 
         Self {
             start_data,
@@ -100,8 +98,8 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
         _focus: Option<(
-            <ThingState as SeatHandler>::PointerFocus,
-            Point<i32, Logical>,
+            WlSurface,
+            smithay::utils::Point<f64, smithay::utils::Logical>,
         )>,
         event: &MotionEvent,
     ) {
@@ -124,15 +122,16 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         }
 
         let (min_size, max_size) = {
-            let surface = match &self.window {
-                WindowElement::Wayland(w) => w.toplevel().wl_surface().clone(),
-                WindowElement::X11(w) => w.wl_surface().unwrap(),
-            };
-
-            compositor::with_states(&surface, |states| {
-                let data = states.cached_state.current::<SurfaceCachedState>();
-                (data.min_size, data.max_size)
-            })
+            if let Some(surface) = self.window.wl_surface().map(|s| s.into_owned()) {
+                compositor::with_states(&surface, |states| {
+                    let mut guard = states.cached_state.get::<SurfaceCachedState>();
+                    let data = guard.current();
+                    (data.min_size, data.max_size)
+                })
+            } else {
+                error!("Can't get surface for resize grab");
+                return;
+            }
         };
 
         let min_width = min_size.w.max(1);
@@ -150,27 +149,12 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
                 .max(min_height),
         ));
 
-        match &self.window {
-            WindowElement::Wayland(window) => {
-                let window = window.toplevel();
-                window.with_pending_state(|state| {
-                    state.states.set(State::Resizing);
-                    state.size = Some(self.last_window_size);
-                });
-                window.send_pending_configure();
-            }
-            WindowElement::X11(window) => {
-                let location = data
-                    .space
-                    .element_location(&WindowElement::X11(window.clone()))
-                    .unwrap();
-                window
-                    .configure(Some(Rectangle::from_loc_and_size(
-                        location,
-                        self.last_window_size,
-                    )))
-                    .unwrap();
-            }
+        if let Some(toplevel) = self.window.toplevel() {
+            toplevel.with_pending_state(|state| {
+                state.states.set(State::Resizing);
+                state.size = Some(self.last_window_size);
+            });
+            toplevel.send_pending_configure();
         }
     }
 
@@ -179,8 +163,8 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
         _focus: Option<(
-            <ThingState as SeatHandler>::PointerFocus,
-            Point<i32, Logical>,
+            WlSurface,
+            smithay::utils::Point<f64, smithay::utils::Logical>,
         )>,
         event: &RelativeMotionEvent,
     ) {
@@ -195,52 +179,52 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
     ) {
         handle.button(data, event);
 
-        // The button is a button code as defined in the
-        // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        const BTN_LEFT: u32 = 0x110;
-
-        if !handle.current_pressed().contains(&BTN_LEFT) {
-            // No more buttons are pressed, release the grab.
-            handle.unset_grab(data, event.serial, event.time);
-
-            match &self.window {
-                WindowElement::Wayland(surface) => {
-                    let xdg = surface.toplevel();
-
-                    ResizeSurfaceState::with(xdg.wl_surface(), |state| {
-                        *state = ResizeSurfaceState::WaitingForLastCommit {
-                            edges: self.edges,
-                            initial_rect: self.initial_rect,
-                        };
-                    });
-
-                    xdg.with_pending_state(|state| {
-                        state.states.unset(State::Resizing);
-                        state.size = Some(self.last_window_size);
-                    });
-                    xdg.send_pending_configure();
-                }
-                WindowElement::X11(surface) => {
-                    ResizeSurfaceState::with(&surface.wl_surface().unwrap(), |state| {
-                        *state = ResizeSurfaceState::WaitingForLastCommit {
-                            edges: self.edges,
-                            initial_rect: self.initial_rect,
-                        };
-                    });
-
-                    let location = data
-                        .space
-                        .element_location(&WindowElement::X11(surface.clone()))
-                        .unwrap();
-                    surface
-                        .configure(Some(Rectangle::from_loc_and_size(
-                            location,
-                            self.last_window_size,
-                        )))
-                        .unwrap();
-                }
-            }
-        }
+        // // The button is a button code as defined in the
+        // // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
+        // const BTN_LEFT: u32 = 0x110;
+        //
+        // if !handle.current_pressed().contains(&BTN_LEFT) {
+        //     // No more buttons are pressed, release the grab.
+        //     handle.unset_grab(data, event.serial, event.time);
+        //
+        //     match &self.window {
+        //         WindowElement::Wayland(surface) => {
+        //             let xdg = surface.toplevel();
+        //
+        //             ResizeSurfaceState::with(xdg.wl_surface(), |state| {
+        //                 *state = ResizeSurfaceState::WaitingForLastCommit {
+        //                     edges: self.edges,
+        //                     initial_rect: self.initial_rect,
+        //                 };
+        //             });
+        //
+        //             xdg.with_pending_state(|state| {
+        //                 state.states.unset(State::Resizing);
+        //                 state.size = Some(self.last_window_size);
+        //             });
+        //             xdg.send_pending_configure();
+        //         }
+        //         WindowElement::X11(surface) => {
+        //             ResizeSurfaceState::with(&surface.wl_surface().unwrap(), |state| {
+        //                 *state = ResizeSurfaceState::WaitingForLastCommit {
+        //                     edges: self.edges,
+        //                     initial_rect: self.initial_rect,
+        //                 };
+        //             });
+        //
+        //             let location = data
+        //                 .space
+        //                 .element_location(&WindowElement::X11(surface.clone()))
+        //                 .unwrap();
+        //             surface
+        //                 .configure(Some(Rectangle::from_loc_and_size(
+        //                     location,
+        //                     self.last_window_size,
+        //                 )))
+        //                 .unwrap();
+        //         }
+        //     }
+        // }
     }
 
     fn axis(
@@ -254,6 +238,86 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
 
     fn start_data(&self) -> &GrabStartData<ThingState> {
         &self.start_data
+    }
+
+    fn frame(&mut self, data: &mut ThingState, handle: &mut PointerInnerHandle<'_, ThingState>) {
+        todo!()
+    }
+
+    fn gesture_swipe_begin(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GestureSwipeBeginEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_swipe_update(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GestureSwipeUpdateEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_swipe_end(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GestureSwipeEndEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_pinch_begin(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GesturePinchBeginEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_pinch_update(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GesturePinchUpdateEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_pinch_end(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GesturePinchEndEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_hold_begin(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GestureHoldBeginEvent,
+    ) {
+        todo!()
+    }
+
+    fn gesture_hold_end(
+        &mut self,
+        data: &mut ThingState,
+        handle: &mut PointerInnerHandle<'_, ThingState>,
+        event: &smithay::input::pointer::GestureHoldEndEvent,
+    ) {
+        todo!()
+    }
+
+    fn unset(&mut self, data: &mut ThingState) {
+        todo!()
     }
 }
 
@@ -318,22 +382,14 @@ impl ResizeSurfaceState {
 
 pub fn handle_resize_request(
     state: &mut ThingState,
-    window: WindowElement,
+    window: Window,
     seat: Seat<ThingState>,
     serial: Serial,
     edges: ResizeEdge,
 ) {
-    let surface = match window.clone() {
-        WindowElement::Wayland(w) => w.toplevel().wl_surface().clone(),
-        WindowElement::X11(w) => {
-            if let Some(surface) = w.wl_surface() {
-                surface
-            } else {
-                return;
-            }
-        }
+    let Some(surface) = window.wl_surface().map(|s| s.into_owned()) else {
+        return;
     };
-
     let Some(start_data) = check_grab(&seat, &surface, serial) else {
         return;
     };
@@ -353,13 +409,10 @@ pub fn handle_resize_request(
 }
 
 /// Should be called on `WlSurface::commit`
-pub fn handle_commit(space: &mut Space<WindowElement>, surface: &WlSurface) -> Option<()> {
+pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
     let window = space
         .elements()
-        .find(|w| match w {
-            WindowElement::Wayland(s) => s.toplevel().wl_surface() == surface,
-            WindowElement::X11(s) => s.wl_surface() == Some(surface.clone()),
-        })
+        .find(|w| w.wl_surface().map(|s| s.as_ref() == surface).unwrap_or(false))
         .cloned()?;
 
     let mut window_loc = space.element_location(&window)?;

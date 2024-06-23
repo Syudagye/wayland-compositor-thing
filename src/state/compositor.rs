@@ -3,7 +3,7 @@ use smithay::{
     delegate_compositor, delegate_shm,
     reexports::wayland_server::{
         protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
-        Client, backend::ClientData,
+        Client,
     },
     wayland::{
         buffer::BufferHandler,
@@ -12,13 +12,13 @@ use smithay::{
             CompositorState,
         },
         shm::{ShmHandler, ShmState},
-    }, xwayland::{X11Wm, XWaylandClientData},
+    },
+    xwayland::{X11Wm, XWaylandClientData},
 };
 
 use crate::CalloopData;
 
 use super::{
-    elements::WindowElement,
     xdg_shell::{self, resize_grab},
     ClientState, ThingState,
 };
@@ -48,24 +48,14 @@ impl CompositorHandler for ThingState {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            if let Some(window) = self
-                .space
-                .elements()
-                .filter_map(|w| {
-                    if let WindowElement::Wayland(w) = w {
-                        Some(w)
-                    } else {
-                        None
-                    }
-                })
-                .find(|w| w.toplevel().wl_surface() == &root)
-            {
+            if let Some(window) = self.space.elements().find(|w| {
+                w.toplevel()
+                    .map(|t| t.wl_surface() == &root)
+                    .unwrap_or(false)
+            }) {
                 window.on_commit();
             }
         };
-
-        // Idk where to put this tho
-        X11Wm::commit_hook::<CalloopData>(surface);
 
         xdg_shell::handle_commit(&self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);

@@ -1,10 +1,8 @@
+use super::ThingState;
 use smithay::{
     delegate_xdg_shell,
     desktop::{Space, Window},
-    input::{
-        pointer::{Focus, GrabStartData},
-        Seat,
-    },
+    input::{pointer::GrabStartData, Seat},
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
         wayland_server::{
@@ -12,20 +10,16 @@ use smithay::{
             Resource,
         },
     },
-    utils::{Rectangle, Serial},
+    utils::Serial,
     wayland::{
         compositor::with_states,
+        seat::WaylandFocus,
         shell::xdg::{
             PopupSurface, PositionerState, ToplevelSurface, XdgShellHandler, XdgShellState,
             XdgToplevelSurfaceData,
         },
     },
 };
-use tracing::debug;
-
-use self::{move_grab::MovePointerGrab, resize_grab::ResizePointerGrab};
-
-use super::{elements::WindowElement, ThingState};
 
 pub mod move_grab;
 pub mod resize_grab;
@@ -36,9 +30,8 @@ impl XdgShellHandler for ThingState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        let window = Window::new(surface);
-        self.space
-            .map_element(WindowElement::Wayland(window), (0, 0), false);
+        let window = Window::new_wayland_window(surface);
+        self.space.map_element(window, (0, 0), false);
     }
 
     fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
@@ -52,17 +45,15 @@ impl XdgShellHandler for ThingState {
     fn move_request(&mut self, surface: ToplevelSurface, seat: WlSeat, serial: Serial) {
         let seat: Seat<ThingState> = Seat::from_resource(&seat).unwrap();
 
-        let window = self
-            .space
-            .elements()
-            .find(|w| match w {
-                WindowElement::Wayland(s) => s.toplevel().wl_surface() == surface.wl_surface(),
-                WindowElement::X11(s) => s.wl_surface() == Some(surface.wl_surface().clone()),
-            })
-            .unwrap()
-            .clone();
+        let Some(window) = self.space.elements().find(|w| {
+            w.wl_surface()
+                .map(|s| s.as_ref() == surface.wl_surface())
+                .unwrap_or(false)
+        }) else {
+            return;
+        };
 
-        move_grab::handle_move_request(self, window, seat, serial);
+        move_grab::handle_move_request(self, window.clone(), seat, serial);
     }
 
     fn resize_request(
@@ -74,17 +65,23 @@ impl XdgShellHandler for ThingState {
     ) {
         let seat: Seat<ThingState> = Seat::from_resource(&seat).unwrap();
 
-        let window = self
-            .space
-            .elements()
-            .find(|w| match w {
-                WindowElement::Wayland(s) => s.toplevel().wl_surface() == surface.wl_surface(),
-                WindowElement::X11(s) => s.wl_surface() == Some(surface.wl_surface().clone()),
-            })
-            .unwrap()
-            .clone();
+        let Some(window) = self.space.elements().find(|w| {
+            w.wl_surface()
+                .map(|s| s.as_ref() == surface.wl_surface())
+                .unwrap_or(false)
+        }) else {
+            return;
+        };
 
-        resize_grab::handle_resize_request(self, window, seat, serial, edges.into());
+        resize_grab::handle_resize_request(self, window.clone(), seat, serial, edges.into());
+    }
+
+    fn reposition_request(
+        &mut self,
+        surface: PopupSurface,
+        positioner: PositionerState,
+        token: u32,
+    ) {
     }
 }
 
@@ -116,28 +113,26 @@ fn check_grab(
 
 /// Sends the configure event to the given surface if it haven't been sent
 /// Should be called on `WlSurface::commit`
-pub fn handle_commit(space: &Space<WindowElement>, surface: &WlSurface) -> Option<()> {
+pub fn handle_commit(space: &Space<Window>, surface: &WlSurface) -> Option<()> {
     let window = space
         .elements()
-        .find(|w| match w {
-            WindowElement::Wayland(s) => s.toplevel().wl_surface() == surface,
-            WindowElement::X11(s) => s.wl_surface() == Some(surface.clone()),
+        .find(|w| {
+            w.wl_surface()
+                .map(|s| s.as_ref() == surface)
+                .unwrap_or(false)
         })
         .cloned()?;
 
     let initial_configure_sent = with_states(surface, |states| {
         if let Some(data) = states.data_map.get::<XdgToplevelSurfaceData>() {
-            return Some(data.lock().unwrap().initial_configure_sent);
+            return Some(data.lock().ok().map(|l| l.initial_configure_sent));
         }
         None
-    });
+    })
+    .flatten()?;
 
-    if let WindowElement::Wayland(window) = window {
-        if let Some(initial_configure_sent) = initial_configure_sent {
-            if !initial_configure_sent {
-                window.toplevel().send_configure();
-            }
-        }
+    if !initial_configure_sent {
+        window.toplevel()?.send_configure();
     }
 
     Some(())

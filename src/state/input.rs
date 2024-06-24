@@ -40,8 +40,6 @@ impl ThingState {
 
     fn process_keyboard<I: InputBackend>(&mut self, event: <I as InputBackend>::KeyboardKeyEvent) {
         let serial = SERIAL_COUNTER.next_serial();
-        debug!("kb event");
-
         let kbh = self.keyboard_handle.clone();
         kbh.input::<(), _>(
             self,

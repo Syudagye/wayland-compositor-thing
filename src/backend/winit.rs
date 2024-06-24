@@ -15,10 +15,11 @@ use smithay::{
             timer::{TimeoutAction, Timer},
             EventLoop,
         },
-        wayland_server::Display,
+        wayland_server::{Display, DisplayHandle},
     },
     utils::{Rectangle, Transform},
 };
+use tracing::error;
 
 use crate::{state::ThingState, CalloopData};
 
@@ -26,7 +27,6 @@ pub fn run(
     event_loop: &mut EventLoop<CalloopData>,
     data: &mut CalloopData,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let display = &mut data.display;
     let state = &mut data.state;
 
     let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
@@ -45,10 +45,10 @@ pub fn run(
             model: "Winit".into(),
         },
     );
-    let _global = output.create_global::<ThingState>(&display.handle());
+    let _global = output.create_global::<ThingState>(&data.dh);
     output.change_current_state(
         Some(mode),
-        Some(Transform::Normal),
+        Some(Transform::Flipped180),
         None,
         Some((0, 0).into()),
     );
@@ -64,7 +64,7 @@ pub fn run(
         .handle()
         .insert_source(Timer::immediate(), move |_instant, _, data| {
             dispatch(
-                &mut data.display,
+                &mut data.dh,
                 &mut data.state,
                 &mut backend,
                 &mut winit,
@@ -79,7 +79,8 @@ pub fn run(
 }
 
 fn dispatch(
-    display: &mut Display<ThingState>,
+    // display: &mut Display<ThingState>,
+    dh: &mut DisplayHandle,
     state: &mut ThingState,
     backend: &mut WinitGraphicsBackend<GlesRenderer>,
     winit: &mut WinitEventLoop,
@@ -137,5 +138,9 @@ fn dispatch(
     });
 
     state.space.refresh();
-    display.flush_clients().unwrap();
+    if let Err(err) = dh.flush_clients() {
+        error!(?err, "Error when flushing clients");
+    }
+
+    backend.window().request_redraw();
 }

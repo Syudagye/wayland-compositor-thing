@@ -15,6 +15,7 @@ use smithay::{
     },
     xwayland::{X11Wm, XWaylandClientData},
 };
+use tracing::trace;
 
 use crate::CalloopData;
 
@@ -41,6 +42,7 @@ impl CompositorHandler for ThingState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
+        trace!(?surface, "surface commit");
         on_commit_buffer_handler::<Self>(surface);
         // No idea what this is supposed to do for now
         if !is_sync_subsurface(surface) {

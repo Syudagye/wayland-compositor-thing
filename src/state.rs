@@ -5,7 +5,7 @@ use smithay::{
     desktop::{Space, Window, WindowSurfaceType},
     input::{keyboard::KeyboardHandle, pointer::PointerHandle, Seat, SeatHandler, SeatState},
     reexports::{
-        calloop::LoopHandle,
+        calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
         wayland_server::{
             backend::{ClientData, ClientId, DisconnectReason},
             protocol::wl_surface::WlSurface,
@@ -29,7 +29,7 @@ use smithay::{
     },
     xwayland::X11Wm,
 };
-use tracing::info;
+use tracing::{error, info};
 
 use crate::CalloopData;
 
@@ -66,7 +66,7 @@ pub struct ThingState {
 impl ThingState {
     pub fn new(
         loop_handle: LoopHandle<'static, CalloopData>,
-        display: &mut Display<ThingState>,
+        display: Display<ThingState>,
     ) -> Self {
         let start_time = Instant::now();
 
@@ -94,8 +94,7 @@ impl ThingState {
         loop_handle
             .insert_source(listening_socket, |stream, _, data| {
                 let res = data
-                    .display
-                    .handle()
+                    .dh
                     .insert_client(stream, Arc::new(ClientState::default()));
 
                 if let Err(e) = res {
@@ -103,19 +102,22 @@ impl ThingState {
                 }
             })
             .expect("Can't create event source for wayland socket");
-        // loop_handle
-        //     .insert_source(
-        //         Generic::new(
-        //             display.backend().poll_fd().as_raw_fd(),
-        //             Interest::READ,
-        //             Mode::Level,
-        //         ),
-        //         |_, _, data| {
-        //             data.display.dispatch_clients(&mut data.state).unwrap();
-        //             Ok(PostAction::Continue)
-        //         },
-        //     )
-        //     .unwrap();
+        // Handle client events
+        loop_handle
+            .insert_source(
+                Generic::new(display, Interest::READ, Mode::Level),
+                |_, display, data| {
+                    let dispatch_res =
+                        unsafe { display.get_mut().dispatch_clients(&mut data.state) };
+
+                    if let Err(err) = dispatch_res {
+                        error!(?err, "Error dispatching client event");
+                    }
+
+                    Ok(PostAction::Continue)
+                },
+            )
+            .expect("Can't create event source for client events");
 
         // XWayland
         // let xwayland = xwayland::setup(&dh, &loop_handle);

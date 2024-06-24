@@ -20,6 +20,7 @@ use smithay::{
         },
     },
 };
+use tracing::trace;
 
 pub mod move_grab;
 pub mod resize_grab;
@@ -30,15 +31,18 @@ impl XdgShellHandler for ThingState {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
+        trace!(?surface, "new top level");
         let window = Window::new_wayland_window(surface);
-        self.space.map_element(window, (0, 0), false);
+        self.space.map_element(window, (0, 0), true);
     }
 
-    fn new_popup(&mut self, _surface: PopupSurface, _positioner: PositionerState) {
+    fn new_popup(&mut self, surface: PopupSurface, positioner: PositionerState) {
+        trace!(?surface, ?positioner, "new popup surface");
         //TODO: Popup handling using PopupManager (see Smallvil)
     }
 
-    fn grab(&mut self, _surface: PopupSurface, _seat: WlSeat, _serial: Serial) {
+    fn grab(&mut self, surface: PopupSurface, _seat: WlSeat, _serial: Serial) {
+        trace!(?surface, "new popup grab");
         //TODO: Popup grabs (see Smallvil)
     }
 

@@ -1,4 +1,7 @@
-use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
+use smithay::reexports::{
+    calloop::EventLoop,
+    wayland_server::{Display, DisplayHandle},
+};
 use state::ThingState;
 
 mod backend;
@@ -6,7 +9,7 @@ mod state;
 
 pub struct CalloopData {
     state: ThingState,
-    display: Display<ThingState>,
+    dh: DisplayHandle,
 }
 
 fn main() {
@@ -19,18 +22,21 @@ fn main() {
         tracing_subscriber::fmt().compact().init();
     }
 
+    let mut event_loop: EventLoop<CalloopData> =
+        EventLoop::try_new().expect("unable to initialize event loop");
+    let display: Display<ThingState> = Display::new().expect("unable to initialize display");
+    let dh = display.handle();
 
-    let mut event_loop: EventLoop<CalloopData> = EventLoop::try_new().expect("unable to initialize event loop");
-    let mut display: Display<ThingState> = Display::new().expect("unable to initialize display");
+    let state = ThingState::new(event_loop.handle(), display);
 
-    let state = ThingState::new(event_loop.handle(), &mut display);
-
-    let mut data = CalloopData { state, display };
+    let mut data = CalloopData { state, dh };
 
     //TODO: Auto-detect backend
     backend::winit::run(&mut event_loop, &mut data).unwrap();
 
-    event_loop.run(None, &mut data, move |_| {
-        // Smallvil is running
-    }).unwrap();
+    event_loop
+        .run(None, &mut data, move |_| {
+            // Smallvil is running
+        })
+        .unwrap();
 }

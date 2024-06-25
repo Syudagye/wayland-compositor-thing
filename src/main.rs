@@ -3,6 +3,7 @@ use smithay::reexports::{
     wayland_server::{Display, DisplayHandle},
 };
 use state::ThingState;
+use tracing::info;
 
 mod backend;
 mod state;
@@ -38,5 +39,7 @@ fn main() {
         .run(None, &mut data, move |_| {
             // Smallvil is running
         })
-        .unwrap();
+    .expect("Unable to start event loop");
+
+    info!("compositor closed");
 }

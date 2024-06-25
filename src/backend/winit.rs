@@ -13,9 +13,9 @@ use smithay::{
     reexports::{
         calloop::{
             timer::{TimeoutAction, Timer},
-            EventLoop,
+            EventLoop, LoopSignal,
         },
-        wayland_server::{Display, DisplayHandle},
+        wayland_server::DisplayHandle,
     },
     utils::{Rectangle, Transform},
 };
@@ -60,6 +60,7 @@ pub fn run(
 
     std::env::set_var("WAYLAND_DISPLAY", &state.socket_name);
 
+    let loop_signal = event_loop.get_signal();
     event_loop
         .handle()
         .insert_source(Timer::immediate(), move |_instant, _, data| {
@@ -70,6 +71,7 @@ pub fn run(
                 &mut winit,
                 &output,
                 &mut damage_tracker,
+                &loop_signal,
             );
             // Draw 60 time a second
             TimeoutAction::ToDuration(Duration::from_millis(16))
@@ -86,10 +88,14 @@ fn dispatch(
     winit: &mut WinitEventLoop,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
+    loop_signal: &LoopSignal,
 ) {
     // Dispatch winit events
     let _dispatch_status = winit.dispatch_new_events(|event| match event {
-        WinitEvent::Resized { size, scale_factor } => output.change_current_state(
+        WinitEvent::Resized {
+            size,
+            scale_factor: _,
+        } => output.change_current_state(
             Some(Mode {
                 size,
                 refresh: 60_000,
@@ -99,6 +105,7 @@ fn dispatch(
             None,
         ),
         WinitEvent::Input(input) => state.process_input_event(input),
+        WinitEvent::CloseRequested => loop_signal.stop(),
         _ => (),
     });
 

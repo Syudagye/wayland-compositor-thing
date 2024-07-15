@@ -1,6 +1,9 @@
+use std::{borrow::BorrowMut, cell::RefCell};
+
 use smithay::{
     backend::renderer::utils::on_commit_buffer_handler,
     delegate_compositor, delegate_shm,
+    desktop::PopupKind,
     reexports::wayland_server::{
         protocol::{wl_buffer::WlBuffer, wl_surface::WlSurface},
         Client,
@@ -8,16 +11,15 @@ use smithay::{
     wayland::{
         buffer::BufferHandler,
         compositor::{
-            get_parent, is_sync_subsurface, CompositorClientState, CompositorHandler,
+            get_parent, is_sync_subsurface, with_states, CompositorClientState, CompositorHandler,
             CompositorState,
         },
+        shell::xdg::XdgPopupSurfaceData,
         shm::{ShmHandler, ShmState},
     },
-    xwayland::{X11Wm, XWaylandClientData},
+    xwayland::XWaylandClientData,
 };
-use tracing::trace;
-
-use crate::CalloopData;
+use tracing::error;
 
 use super::{
     xdg_shell::{self, resize_grab},
@@ -42,7 +44,6 @@ impl CompositorHandler for ThingState {
     }
 
     fn commit(&mut self, surface: &WlSurface) {
-        trace!(?surface, "surface commit");
         on_commit_buffer_handler::<Self>(surface);
         // No idea what this is supposed to do for now
         if !is_sync_subsurface(surface) {
@@ -59,8 +60,35 @@ impl CompositorHandler for ThingState {
             }
         };
 
+        self.popup_manager.commit(surface);
         xdg_shell::handle_commit(&self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);
+
+        // Ensure commit is sent to popups
+        if let Some(popup) = self.popup_manager.find_popup(surface) {
+            let popup_surface = match popup {
+                PopupKind::Xdg(s) => s,
+                PopupKind::InputMethod(_) => return,
+            };
+
+            let is_sent = with_states(surface, |state| {
+                let Some(data) = state.data_map.get::<XdgPopupSurfaceData>() else {
+                    return true;
+                };
+                let Ok(guard) = data.lock() else {
+                    return true;
+                };
+
+                guard.initial_configure_sent
+            });
+
+            if !is_sent {
+                if let Err(err) = popup_surface.send_configure() {
+                    error!(?err, "Cannot send configure event");
+                    return;
+                }
+            }
+        }
     }
 }
 

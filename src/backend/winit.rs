@@ -2,9 +2,10 @@ use std::time::Duration;
 
 use smithay::{
     backend::{
+        egl::EGLDevice,
         renderer::{
             damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement,
-            gles::GlesRenderer,
+            glow::GlowRenderer, ImportEgl,
         },
         winit::{self, WinitEvent, WinitEventLoop, WinitGraphicsBackend},
     },
@@ -19,7 +20,7 @@ use smithay::{
     },
     utils::{Rectangle, Transform},
 };
-use tracing::error;
+use tracing::{error, info};
 
 use crate::{state::ThingState, CalloopData};
 
@@ -29,7 +30,7 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let state = &mut data.state;
 
-    let (mut backend, mut winit) = winit::init::<GlesRenderer>()?;
+    let (mut backend, mut winit) = winit::init::<GlowRenderer>()?;
 
     let mode = Mode {
         size: backend.window_size(),
@@ -53,6 +54,11 @@ pub fn run(
         Some((0, 0).into()),
     );
     output.set_preferred(mode);
+
+    // Enables hardware acceleration for client surfaces
+    if backend.renderer().bind_wl_display(&data.dh).is_ok() {
+        info!("EGL Enabled");
+    }
 
     state.space.map_output(&output, (0, 0));
 
@@ -84,7 +90,7 @@ fn dispatch(
     // display: &mut Display<ThingState>,
     dh: &mut DisplayHandle,
     state: &mut ThingState,
-    backend: &mut WinitGraphicsBackend<GlesRenderer>,
+    backend: &mut WinitGraphicsBackend<GlowRenderer>,
     winit: &mut WinitEventLoop,
     output: &Output,
     damage_tracker: &mut OutputDamageTracker,
@@ -113,7 +119,7 @@ fn dispatch(
 
     backend.bind().unwrap();
 
-    let render_result = render_output::<_, WaylandSurfaceRenderElement<GlesRenderer>, _, _>(
+    let render_result = render_output::<_, WaylandSurfaceRenderElement<GlowRenderer>, _, _>(
         &output,
         backend.renderer(),
         1.0,
@@ -145,6 +151,7 @@ fn dispatch(
     });
 
     state.space.refresh();
+    state.popup_manager.cleanup();
     if let Err(err) = dh.flush_clients() {
         error!(?err, "Error when flushing clients");
     }

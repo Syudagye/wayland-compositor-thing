@@ -2,7 +2,7 @@ use std::{ffi::OsString, sync::Arc, time::Instant};
 
 use smithay::{
     delegate_data_device, delegate_output, delegate_seat,
-    desktop::{Space, Window, WindowSurfaceType},
+    desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{keyboard::KeyboardHandle, pointer::PointerHandle, Seat, SeatHandler, SeatState},
     reexports::{
         calloop::{generic::Generic, Interest, LoopHandle, Mode, PostAction},
@@ -16,6 +16,7 @@ use smithay::{
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::{OutputHandler, OutputManagerState},
+        seat::WaylandFocus,
         selection::{
             data_device::{
                 ClientDndGrabHandler, DataDeviceHandler, DataDeviceState, ServerDndGrabHandler,
@@ -56,6 +57,7 @@ pub struct ThingState {
     // temporary, there is probably a better way to do this
     pub keyboard_handle: KeyboardHandle<ThingState>,
     pub pointer_handle: PointerHandle<ThingState>,
+    pub popup_manager: PopupManager,
 
     // XWayland
     // pub xwayland: Option<XWayland>,
@@ -139,11 +141,20 @@ impl ThingState {
             seat,
             keyboard_handle,
             pointer_handle,
+            popup_manager: Default::default(),
 
             // xwayland,
             xwm: None,
             xw_shell_state,
         }
+    }
+
+    pub fn window_for_surface(&self, surface: WlSurface) -> Option<&Window> {
+        self.space.elements().find(|w| {
+            w.wl_surface()
+                .map(|s| s.into_owned() == surface)
+                .unwrap_or(false)
+        })
     }
 
     /// Finds the element's surface under the given location and return it's surface and location

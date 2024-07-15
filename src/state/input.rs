@@ -1,16 +1,14 @@
 use smithay::{
     backend::input::{
-        AbsolutePositionEvent, Axis, AxisRelativeDirection, AxisSource, ButtonState, Event,
-        InputBackend, InputEvent, KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
-    },
-    input::{
+        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
+    }, input::{
         keyboard::FilterResult,
-        pointer::{AxisFrame, ButtonEvent, MotionEvent, PointerHandle},
-    },
-    utils::{Logical, Point, Serial, SERIAL_COUNTER},
-    wayland::{relative_pointer, seat::WaylandFocus},
+        pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
+    }, reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge, utils::{Logical, Point, Serial, SERIAL_COUNTER}, wayland::seat::WaylandFocus
 };
-use tracing::{debug, trace};
+use tracing::trace;
+
+use crate::state::xdg_shell::{move_grab::MovePointerGrab, resize_grab::ResizePointerGrab};
 
 use super::ThingState;
 
@@ -39,6 +37,8 @@ impl ThingState {
     // }
 
     fn process_keyboard<I: InputBackend>(&mut self, event: <I as InputBackend>::KeyboardKeyEvent) {
+        use smithay::backend::input::KeyboardKeyEvent;
+
         let serial = SERIAL_COUNTER.next_serial();
         let kbh = self.keyboard_handle.clone();
         kbh.input::<(), _>(
@@ -87,6 +87,8 @@ impl ThingState {
         &mut self,
         event: <I as InputBackend>::PointerButtonEvent,
     ) {
+        use smithay::backend::input::PointerButtonEvent;
+
         let pointer = self.seat.get_pointer().unwrap();
         let button = event.button_code();
         let state = event.state();
@@ -99,8 +101,66 @@ impl ThingState {
         // For now, it's just to have a minimal way to changing focus, moving windows, etc.
         // =====
 
-        if state == ButtonState::Pressed {
+        const BTN_LEFT: u32 = 0x110;
+        const BTN_RIGHT: u32 = 0x111;
+
+        if state == ButtonState::Pressed && button == BTN_LEFT {
             self.update_keyboard_focus_for_cursor_position(pointer.current_location(), serial);
+
+            // Move a window with ALT + LEFT_CLICK
+            if let Some((window, loc)) = self
+                .space
+                .element_under(pointer.current_location())
+                .map(|(w, p)| (w.clone(), p))
+            {
+                let kb = self.keyboard_handle.clone();
+                if kb.modifier_state().alt {
+                    let focus = window
+                        .wl_surface()
+                        .map(|surf| (surf.into_owned(), loc.to_f64()));
+                    let start_data = GrabStartData {
+                        focus,
+                        button: BTN_LEFT,
+                        location: pointer.current_location(),
+                    };
+                    let grab = MovePointerGrab {
+                        start_data,
+                        window,
+                        initial_window_location: loc,
+                    };
+                    pointer.set_grab(self, grab, serial, Focus::Clear);
+                }
+            }
+        }
+
+        if state == ButtonState::Pressed && button == BTN_RIGHT {
+            // Resize a window with ALT + RIGHT_CLICK
+            if let Some((window, loc)) = self
+                .space
+                .element_under(pointer.current_location())
+                .map(|(w, p)| (w.clone(), p))
+            {
+                let kb = self.keyboard_handle.clone();
+                if kb.modifier_state().alt {
+                    let focus = window
+                        .wl_surface()
+                        .map(|surf| (surf.into_owned(), loc.to_f64()));
+                    let start_data = GrabStartData {
+                        focus,
+                        button: BTN_LEFT,
+                        location: pointer.current_location(),
+                    };
+                    let initial_rect = self.space.element_geometry(&window).unwrap();
+                    let grab = ResizePointerGrab {
+                        start_data,
+                        window,
+                        initial_rect,
+                        edges: ResizeEdge::BottomRight.into(),
+                        last_window_size: initial_rect.size,
+                    };
+                    pointer.set_grab(self, grab, serial, Focus::Clear);
+                }
+            }
         }
 
         pointer.button(
@@ -119,6 +179,8 @@ impl ThingState {
         &mut self,
         event: <I as InputBackend>::PointerAxisEvent,
     ) {
+        use smithay::backend::input::PointerAxisEvent;
+
         let pointer = self.pointer_handle.clone();
 
         let source = event.source();

@@ -1,11 +1,15 @@
 use smithay::{
-    desktop::Window, input::{
+    desktop::Window,
+    input::{
         pointer::{
             AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent, PointerGrab,
             PointerInnerHandle, RelativeMotionEvent,
         },
         Seat,
-    }, reexports::wayland_server::protocol::wl_surface::WlSurface, utils::{Logical, Point, Serial}, wayland::seat::WaylandFocus
+    },
+    reexports::wayland_server::protocol::wl_surface::WlSurface,
+    utils::{Logical, Point, Serial},
+    wayland::seat::WaylandFocus,
 };
 
 use crate::state::ThingState;
@@ -21,7 +25,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        _focus: Option<(WlSurface, smithay::utils::Point<f64, smithay::utils::Logical>)>,
+        _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         handle.motion(data, None, event);
@@ -36,7 +40,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        _focus: Option<(WlSurface, smithay::utils::Point<f64, smithay::utils::Logical>)>,
+        _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, None, event);
@@ -49,15 +53,20 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         event: &ButtonEvent,
     ) {
         handle.button(data, event);
+
+        // =====
+        // TEMPORARY LOGIC
         //
-        // // The button is a button code as defined in the
-        // // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        // const BTN_LEFT: u32 = 0x110;
-        //
-        // if !handle.current_pressed().contains(&BTN_LEFT) {
-        //     // No more buttons are pressed, release the grab.
-        //     handle.unset_grab(data, event.serial, event.time);
-        // }
+        // This will be moved and made configurable in the future.
+        // For now, it's just to have a minimal way to changing focus, moving windows, etc.
+        // =====
+
+        const BTN_LEFT: u32 = 0x110;
+
+        if !handle.current_pressed().contains(&BTN_LEFT) {
+            // No more buttons are pressed, release the grab.
+            handle.unset_grab(self, data, event.serial, event.time, true);
+        }
     }
 
     fn axis(
@@ -74,6 +83,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
     }
 
     fn frame(&mut self, data: &mut ThingState, handle: &mut PointerInnerHandle<'_, ThingState>) {
+        handle.frame(data);
     }
 
     fn gesture_swipe_begin(
@@ -82,6 +92,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
+        handle.gesture_swipe_begin(data, event);
     }
 
     fn gesture_swipe_update(
@@ -90,6 +101,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
+        handle.gesture_swipe_update(data, event);
     }
 
     fn gesture_swipe_end(
@@ -98,6 +110,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
+        handle.gesture_swipe_end(data, event);
     }
 
     fn gesture_pinch_begin(
@@ -106,6 +119,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
+        handle.gesture_pinch_begin(data, event);
     }
 
     fn gesture_pinch_update(
@@ -114,6 +128,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
+        handle.gesture_pinch_update(data, event);
     }
 
     fn gesture_pinch_end(
@@ -122,6 +137,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
+        handle.gesture_pinch_end(data, event);
     }
 
     fn gesture_hold_begin(
@@ -130,6 +146,7 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
+        handle.gesture_hold_begin(data, event);
     }
 
     fn gesture_hold_end(
@@ -138,10 +155,10 @@ impl PointerGrab<ThingState> for MovePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
+        handle.gesture_hold_end(data, event);
     }
 
-    fn unset(&mut self, data: &mut ThingState) {
-    }
+    fn unset(&mut self, _data: &mut ThingState) {}
 }
 
 pub fn handle_move_request(

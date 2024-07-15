@@ -241,7 +241,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
     }
 
     fn frame(&mut self, data: &mut ThingState, handle: &mut PointerInnerHandle<'_, ThingState>) {
-        todo!()
+        handle.frame(data);
     }
 
     fn gesture_swipe_begin(
@@ -250,7 +250,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeBeginEvent,
     ) {
-        todo!()
+        handle.gesture_swipe_begin(data, event);
     }
 
     fn gesture_swipe_update(
@@ -259,7 +259,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeUpdateEvent,
     ) {
-        todo!()
+        handle.gesture_swipe_update(data, event);
     }
 
     fn gesture_swipe_end(
@@ -268,7 +268,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureSwipeEndEvent,
     ) {
-        todo!()
+        handle.gesture_swipe_end(data, event);
     }
 
     fn gesture_pinch_begin(
@@ -277,7 +277,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchBeginEvent,
     ) {
-        todo!()
+        handle.gesture_pinch_begin(data, event);
     }
 
     fn gesture_pinch_update(
@@ -286,7 +286,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchUpdateEvent,
     ) {
-        todo!()
+        handle.gesture_pinch_update(data, event);
     }
 
     fn gesture_pinch_end(
@@ -295,7 +295,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GesturePinchEndEvent,
     ) {
-        todo!()
+        handle.gesture_pinch_end(data, event);
     }
 
     fn gesture_hold_begin(
@@ -304,7 +304,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureHoldBeginEvent,
     ) {
-        todo!()
+        handle.gesture_hold_begin(data, event);
     }
 
     fn gesture_hold_end(
@@ -313,11 +313,10 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle: &mut PointerInnerHandle<'_, ThingState>,
         event: &smithay::input::pointer::GestureHoldEndEvent,
     ) {
-        todo!()
+        handle.gesture_hold_end(data, event);
     }
 
     fn unset(&mut self, data: &mut ThingState) {
-        todo!()
     }
 }
 

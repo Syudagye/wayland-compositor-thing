@@ -12,7 +12,7 @@ use smithay::{
             Display,
         },
     },
-    utils::{Logical, Point},
+    utils::{Clock, Logical, Monotonic, Point},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::{OutputHandler, OutputManagerState},
@@ -32,7 +32,7 @@ use smithay::{
 };
 use tracing::{error, info};
 
-use crate::CalloopData;
+use crate::backend::CalloopData;
 
 mod compositor;
 mod elements;
@@ -45,6 +45,7 @@ pub struct ThingState {
     pub start_time: Instant,
     pub socket_name: OsString,
     pub space: Space<Window>,
+    pub clock: Clock<Monotonic>,
 
     // Smithay
     pub compositor_state: CompositorState,
@@ -75,6 +76,7 @@ impl ThingState {
         let dh = &display.handle();
 
         let space = Space::default();
+        let clock = Clock::new();
         let compositor_state = CompositorState::new::<ThingState>(dh);
         let xdg_shell_state = XdgShellState::new::<ThingState>(dh);
         let shm_state = ShmState::new::<ThingState>(dh, vec![]);
@@ -131,6 +133,7 @@ impl ThingState {
             start_time,
             space,
             socket_name,
+            clock,
 
             compositor_state,
             xdg_shell_state,

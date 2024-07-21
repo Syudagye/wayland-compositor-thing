@@ -1,0 +1,22 @@
+[package]
+name = "wlcs-integration"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wlcs = "0.1.0"
+wayland-compositor-thing = { path = ".." }
+wayland-sys = { version = "0.31.3", features = ["client", "server"] }
+
+[dependencies.smithay]
+git = "https://github.com/Smithay/smithay"
+default-features = false
+features = [
+    "backend_egl",
+    "wayland_frontend",
+    "renderer_test",
+    "use_system_lib",
+]

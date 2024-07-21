@@ -1,17 +1,9 @@
-use smithay::reexports::{
-    calloop::EventLoop,
-    wayland_server::{Display, DisplayHandle},
-};
-use state::ThingState;
+use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use tracing::info;
-
-mod backend;
-mod state;
-
-pub struct CalloopData {
-    state: ThingState,
-    dh: DisplayHandle,
-}
+use wayland_compositor_thing::{
+    backend::{self, CalloopData},
+    state::ThingState,
+};
 
 fn main() {
     if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
@@ -39,7 +31,7 @@ fn main() {
         .run(None, &mut data, move |_| {
             // Smallvil is running
         })
-    .expect("Unable to start event loop");
+        .expect("Unable to start event loop");
 
     info!("compositor closed");
 }

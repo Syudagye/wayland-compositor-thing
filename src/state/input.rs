@@ -1,10 +1,14 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-    }, input::{
+    },
+    input::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
-    }, reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge, utils::{Logical, Point, Serial, SERIAL_COUNTER}, wayland::seat::WaylandFocus
+    },
+    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
+    utils::{Logical, Point, Serial, SERIAL_COUNTER},
+    wayland::seat::WaylandFocus,
 };
 use tracing::trace;
 

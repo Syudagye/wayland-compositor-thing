@@ -13,7 +13,7 @@ use smithay::{
 };
 use tracing::{debug, error, info};
 
-use crate::CalloopData;
+use crate::backend::CalloopData;
 
 use super::{
     xdg_shell::{move_grab, resize_grab},

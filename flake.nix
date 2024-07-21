@@ -10,6 +10,9 @@
       shell = pkgs: pkgs.mkShell {
         inputsFrom = [ self.packages.${pkgs.system}.default ];
         LD_LIBRARY_PATH = "${(pkgs.libGL.outPath + "/lib")}:${(pkgs.wayland.outPath + "/lib")}";
+        shellHook = ''
+          export PATH="${(pkgs.wlcs.outPath + "/libexec/wlcs")}:$PATH"
+        '';
       };
       package = pkgs: let
         rpath = pkgs.stdenv.lib.makeLibraryPath [

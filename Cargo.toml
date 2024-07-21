@@ -3,7 +3,8 @@ name = "wayland-compositor-thing"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[workspace]
+members = ["wlcs-integration"]
 
 [dependencies]
 tracing = "0.1.37"

@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use smithay::{
     backend::{
-        egl::EGLDevice,
         renderer::{
             damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement,
             glow::GlowRenderer, ImportEgl,
@@ -22,7 +21,7 @@ use smithay::{
 };
 use tracing::{error, info};
 
-use crate::{state::ThingState, CalloopData};
+use crate::{state::ThingState, backend::CalloopData};
 
 pub fn run(
     event_loop: &mut EventLoop<CalloopData>,

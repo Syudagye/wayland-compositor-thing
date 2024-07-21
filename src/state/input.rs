@@ -1,18 +1,15 @@
 use smithay::{
-    backend::input::{
-        AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-    },
+    backend::input::{Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent, MouseButton},
     input::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, Focus, GrabStartData, MotionEvent},
     },
-    reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::ResizeEdge,
     utils::{Logical, Point, Serial, SERIAL_COUNTER},
     wayland::seat::WaylandFocus,
 };
 use tracing::trace;
 
-use crate::state::xdg_shell::{move_grab::MovePointerGrab, resize_grab::ResizePointerGrab};
+use crate::state::xdg_shell::{move_grab::MovePointerGrab, resize_grab::{ResizeEdge, ResizePointerGrab}};
 
 use super::ThingState;
 
@@ -60,14 +57,30 @@ impl ThingState {
         &mut self,
         event: <I as InputBackend>::PointerMotionEvent,
     ) {
-        trace!("Pointer Motion");
+        use smithay::backend::input::PointerMotionEvent;
+
+        let pointer = self.pointer_handle.clone();
+        let location = pointer.current_location() + event.delta();
+        let element_under = self.surface_under(location);
+
+        pointer.motion(
+            self,
+            element_under,
+            &MotionEvent {
+                location,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: event.time_msec(),
+            },
+        );
+        pointer.frame(self);
     }
 
     fn process_pointer_motion_absolute<I: InputBackend>(
         &mut self,
         event: <I as InputBackend>::PointerMotionAbsoluteEvent,
     ) {
-        trace!("Pointer Motion Abs");
+        use smithay::backend::input::AbsolutePositionEvent;
+
         let output = self.space.outputs().next().unwrap();
         let output_geo = self.space.output_geometry(output).unwrap();
         let location = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
@@ -105,64 +118,63 @@ impl ThingState {
         // For now, it's just to have a minimal way to changing focus, moving windows, etc.
         // =====
 
-        const BTN_LEFT: u32 = 0x110;
-        const BTN_RIGHT: u32 = 0x111;
-
-        if state == ButtonState::Pressed && button == BTN_LEFT {
-            self.update_keyboard_focus_for_cursor_position(pointer.current_location(), serial);
-
-            // Move a window with ALT + LEFT_CLICK
+        if state == ButtonState::Pressed {
             if let Some((window, loc)) = self
                 .space
                 .element_under(pointer.current_location())
                 .map(|(w, p)| (w.clone(), p))
             {
-                let kb = self.keyboard_handle.clone();
-                if kb.modifier_state().alt {
-                    let focus = window
-                        .wl_surface()
-                        .map(|surf| (surf.into_owned(), loc.to_f64()));
-                    let start_data = GrabStartData {
-                        focus,
-                        button: BTN_LEFT,
-                        location: pointer.current_location(),
-                    };
-                    let grab = MovePointerGrab {
-                        start_data,
-                        window,
-                        initial_window_location: loc,
-                    };
-                    pointer.set_grab(self, grab, serial, Focus::Clear);
-                }
-            }
-        }
+                match event.button() {
+                    // MOVE GRAB
+                    Some(MouseButton::Left) => {
+                        self.update_keyboard_focus_for_cursor_position(
+                            pointer.current_location(),
+                            serial,
+                        );
 
-        if state == ButtonState::Pressed && button == BTN_RIGHT {
-            // Resize a window with ALT + RIGHT_CLICK
-            if let Some((window, loc)) = self
-                .space
-                .element_under(pointer.current_location())
-                .map(|(w, p)| (w.clone(), p))
-            {
-                let kb = self.keyboard_handle.clone();
-                if kb.modifier_state().alt {
-                    let focus = window
-                        .wl_surface()
-                        .map(|surf| (surf.into_owned(), loc.to_f64()));
-                    let start_data = GrabStartData {
-                        focus,
-                        button: BTN_LEFT,
-                        location: pointer.current_location(),
-                    };
-                    let initial_rect = self.space.element_geometry(&window).unwrap();
-                    let grab = ResizePointerGrab {
-                        start_data,
-                        window,
-                        initial_rect,
-                        edges: ResizeEdge::BottomRight.into(),
-                        last_window_size: initial_rect.size,
-                    };
-                    pointer.set_grab(self, grab, serial, Focus::Clear);
+                        let kb = self.keyboard_handle.clone();
+                        if kb.modifier_state().alt {
+                            let focus = window
+                                .wl_surface()
+                                .map(|surf| (surf.into_owned(), loc.to_f64()));
+                            let start_data = GrabStartData {
+                                focus,
+                                button: event.button_code(),
+                                location: pointer.current_location(),
+                            };
+                            let grab = MovePointerGrab {
+                                start_data,
+                                window,
+                                initial_window_location: loc,
+                            };
+                            pointer.set_grab(self, grab, serial, Focus::Clear);
+                        }
+                    }
+
+                    // RESIZE GRAB
+                    Some(MouseButton::Right) => {
+                        let kb = self.keyboard_handle.clone();
+                        if kb.modifier_state().alt {
+                            let focus = window
+                                .wl_surface()
+                                .map(|surf| (surf.into_owned(), loc.to_f64()));
+                            let start_data = GrabStartData {
+                                focus,
+                                button: event.button_code(),
+                                location: pointer.current_location(),
+                            };
+                            let initial_rect = self.space.element_geometry(&window).unwrap();
+                            let grab = ResizePointerGrab::start(
+                                start_data,
+                                window,
+                                initial_rect,
+                                ResizeEdge::BOTTOM_RIGHT,
+                            );
+                            pointer.set_grab(self, grab, serial, Focus::Clear);
+                        }
+                    }
+
+                    _ => {}
                 }
             }
         }

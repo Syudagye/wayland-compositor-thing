@@ -7,7 +7,7 @@ use smithay::{
             ButtonEvent, Focus, GrabStartData, MotionEvent, PointerGrab, PointerInnerHandle,
             RelativeMotionEvent,
         },
-        Seat, SeatHandler,
+        Seat,
     },
     reexports::{
         wayland_protocols::xdg::shell::server::xdg_toplevel::{self, State},
@@ -73,14 +73,14 @@ impl ResizePointerGrab {
     ) -> Self {
         let last_window_size = initial_rect.size;
 
-        let surface = window.wl_surface().map(|s| s.into_owned());
-
-        // ResizeSurfaceState::with(&surface, |state| {
-        //     *state = ResizeSurfaceState::Resizing {
-        //         edges,
-        //         initial_rect,
-        //     };
-        // });
+        if let Some(surface) = window.wl_surface().map(|s| s.into_owned()) {
+            ResizeSurfaceState::with(&surface, |state| {
+                *state = ResizeSurfaceState::Resizing {
+                    edges,
+                    initial_rect,
+                };
+            });
+        }
 
         Self {
             start_data,
@@ -97,42 +97,37 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        _focus: Option<(
-            WlSurface,
-            smithay::utils::Point<f64, smithay::utils::Logical>,
-        )>,
+        _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &MotionEvent,
     ) {
         handle.motion(data, None, event);
 
         let mut delta = event.location - self.start_data.location;
 
-        if self.edges.intersects(ResizeEdge::TOP | ResizeEdge::BOTTOM) {
+        if self.edges.intersects(ResizeEdge::TOP) {
+            delta.y = -delta.y;
+        }
+        if self.edges.intersects(ResizeEdge::LEFT) {
+            delta.x = -delta.x;
+        }
+
+        if !self.edges.intersects(ResizeEdge::LEFT) && !self.edges.intersects(ResizeEdge::RIGHT) {
             delta.x = 0.0;
-            if self.edges.intersects(ResizeEdge::TOP) {
-                delta.y = -delta.y;
-            }
         }
-
-        if self.edges.intersects(ResizeEdge::LEFT | ResizeEdge::RIGHT) {
+        if !self.edges.intersects(ResizeEdge::TOP) && !self.edges.intersects(ResizeEdge::BOTTOM) {
             delta.y = 0.0;
-            if self.edges.intersects(ResizeEdge::LEFT) {
-                delta.x = -delta.x;
-            }
         }
 
-        let (min_size, max_size) = {
-            if let Some(surface) = self.window.wl_surface().map(|s| s.into_owned()) {
-                compositor::with_states(&surface, |states| {
-                    let mut guard = states.cached_state.get::<SurfaceCachedState>();
-                    let data = guard.current();
-                    (data.min_size, data.max_size)
-                })
-            } else {
-                error!("Can't get surface for resize grab");
-                return;
-            }
+        let Some(surface) = self.window.wl_surface().map(|s| s.into_owned()) else {
+            error!("Can't get surface for resize grab");
+            return;
         };
+
+        let (min_size, max_size) = compositor::with_states(&surface, |states| {
+            let mut guard = states.cached_state.get::<SurfaceCachedState>();
+            let data = guard.current();
+            (data.min_size, data.max_size)
+        });
 
         let min_width = min_size.w.max(1);
         let min_height = min_size.h.max(1);
@@ -162,10 +157,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         &mut self,
         data: &mut ThingState,
         handle: &mut PointerInnerHandle<'_, ThingState>,
-        _focus: Option<(
-            WlSurface,
-            smithay::utils::Point<f64, smithay::utils::Logical>,
-        )>,
+        _focus: Option<(WlSurface, Point<f64, Logical>)>,
         event: &RelativeMotionEvent,
     ) {
         handle.relative_motion(data, None, event);
@@ -179,52 +171,29 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
     ) {
         handle.button(data, event);
 
-        // // The button is a button code as defined in the
-        // // Linux kernel's linux/input-event-codes.h header file, e.g. BTN_LEFT.
-        // const BTN_LEFT: u32 = 0x110;
-        //
-        // if !handle.current_pressed().contains(&BTN_LEFT) {
-        //     // No more buttons are pressed, release the grab.
-        //     handle.unset_grab(data, event.serial, event.time);
-        //
-        //     match &self.window {
-        //         WindowElement::Wayland(surface) => {
-        //             let xdg = surface.toplevel();
-        //
-        //             ResizeSurfaceState::with(xdg.wl_surface(), |state| {
-        //                 *state = ResizeSurfaceState::WaitingForLastCommit {
-        //                     edges: self.edges,
-        //                     initial_rect: self.initial_rect,
-        //                 };
-        //             });
-        //
-        //             xdg.with_pending_state(|state| {
-        //                 state.states.unset(State::Resizing);
-        //                 state.size = Some(self.last_window_size);
-        //             });
-        //             xdg.send_pending_configure();
-        //         }
-        //         WindowElement::X11(surface) => {
-        //             ResizeSurfaceState::with(&surface.wl_surface().unwrap(), |state| {
-        //                 *state = ResizeSurfaceState::WaitingForLastCommit {
-        //                     edges: self.edges,
-        //                     initial_rect: self.initial_rect,
-        //                 };
-        //             });
-        //
-        //             let location = data
-        //                 .space
-        //                 .element_location(&WindowElement::X11(surface.clone()))
-        //                 .unwrap();
-        //             surface
-        //                 .configure(Some(Rectangle::from_loc_and_size(
-        //                     location,
-        //                     self.last_window_size,
-        //                 )))
-        //                 .unwrap();
-        //         }
-        //     }
-        // }
+        const BTN_RIGHT: u32 = 0x111;
+
+        if !handle.current_pressed().contains(&BTN_RIGHT) {
+            // No more buttons are pressed, release the grab.
+            handle.unset_grab(self, data, event.serial, event.time, true);
+
+            if let Some(surface) = self.window.wl_surface().map(|s| s.into_owned()) {
+                ResizeSurfaceState::with(&surface, |state| {
+                    *state = ResizeSurfaceState::WaitingForLastCommit {
+                        edges: self.edges,
+                        initial_rect: self.initial_rect,
+                    };
+                });
+            }
+
+            if let Some(xdg) = self.window.toplevel() {
+                xdg.with_pending_state(|state| {
+                    state.states.unset(State::Resizing);
+                    state.size = Some(self.last_window_size);
+                });
+                xdg.send_pending_configure();
+            }
+        }
     }
 
     fn axis(
@@ -316,8 +285,7 @@ impl PointerGrab<ThingState> for ResizePointerGrab {
         handle.gesture_hold_end(data, event);
     }
 
-    fn unset(&mut self, data: &mut ThingState) {
-    }
+    fn unset(&mut self, data: &mut ThingState) {}
 }
 
 /// State of the resize operation.
@@ -411,7 +379,11 @@ pub fn handle_resize_request(
 pub fn handle_commit(space: &mut Space<Window>, surface: &WlSurface) -> Option<()> {
     let window = space
         .elements()
-        .find(|w| w.wl_surface().map(|s| s.as_ref() == surface).unwrap_or(false))
+        .find(|w| {
+            w.wl_surface()
+                .map(|s| s.as_ref() == surface)
+                .unwrap_or(false)
+        })
         .cloned()?;
 
     let mut window_loc = space.element_location(&window)?;
